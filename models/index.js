@@ -6,13 +6,14 @@ Location = db.define('location', {
     name: {
         type: Sequelize.STRING,
         allowNull: false
-    }
-});
-
-Role = db.define('role', {
-    name: {
-        type: Sequelize.STRING,
-        allowNull: false
+    },
+    roles: {
+      type: Sequelize.ARRAY(Sequelize.STRING),
+      allowNull: false
+    },
+    isActive: {
+      type: Sequelize.BOOLEAN,
+      defaultValue: true
     }
 });
 
@@ -26,10 +27,6 @@ Player = db.define('player', {
     name: {
         type: Sequelize.STRING,
         allowNull: false
-    },
-    isSpy: {
-      type: Sequelize.BOOLEAN,
-      defaultValue: false
     }
 });
 
@@ -49,23 +46,24 @@ Round = db.define('round', {
         defaultValue: function(){
           return Date.now().toString();
         }
+    },
+    playerIds: {
+      type: Sequelize.ARRAY(Sequelize.UUID),
+      allowNull: false
+    },
+    locationIds: {
+      type: Sequelize.ARRAY(Sequelize.INTEGER),
+      allowNull: false
     }
 });
 
-
-Room.hasMany(Player);
-Role.hasMany(Player);
-//Player.belongsTo(Role)
-Location.hasMany(Role);
-
-Round.belongsTo(Location);
 Room.hasMany(Location);
-Room.hasOne(Round);
+Room.hasMany(Round);
+Room.hasMany(Player);
 
 module.exports = {
   db: db,
   Location: Location,
-  Role: Role,
   Player: Player,
   Room: Room,
   Round: Round

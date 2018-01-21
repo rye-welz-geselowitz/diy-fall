@@ -4,12 +4,12 @@ var Utils = require('./js/common.js');
 
 var express = require('express');
 var router = express.Router();
-
+const shuffleSeed = require('shuffle-seed');
 // Room
 
 router.post('/rooms', (req, res, next) => {
 	Room.create()
-	.then(function(room){
+	.then( (room) => {
 		res.send(room)
 	})
 	.catch(next);
@@ -18,7 +18,7 @@ router.post('/rooms', (req, res, next) => {
 // (unused)
 router.get('/rooms',function(req,res,next){
 	Room.findAll()
-	.then(function(rooms){
+	.then( (rooms) => {
 		res.send(rooms);
 	})
 	.catch(next);
@@ -26,16 +26,16 @@ router.get('/rooms',function(req,res,next){
 
 // Player
 
-router.post('/players', (req, res, next) => {
-	Room.findById(req.body.roomId)
-	.then(function(room){
+router.post('/players/room/:roomId', (req, res, next) => {
+	Room.findById(req.params.roomId)
+	.then( (room) => {
 		Player.create({
 			name: req.body.name
 		})
-		.then(function(player){
+		.then( (player) => {
 			return room.addPlayer(player)
 		})
-		.then(function(player){
+		.then( (player) => {
 			res.send(player)
 		})
 	})
@@ -45,7 +45,7 @@ router.post('/players', (req, res, next) => {
 //(unused)
 router.get('/players', (req, res, next) => {
 	Player.findAll()
-	.then(function(player){
+	.then( (player) => {
 		res.send(player)
 	})
 	.catch(next);
@@ -53,9 +53,9 @@ router.get('/players', (req, res, next) => {
 
 router.get('/players/room/:roomId', (req, res, next) => {
 	Room.findById(req.params.roomId)
-	.then(function(room){
+	.then( (room) => {
 		return room.getPlayers()
-	}).then(function(players) {
+	}).then( (players) => {
 		res.send(players)
 	})
 	.catch(next);
@@ -63,41 +63,29 @@ router.get('/players/room/:roomId', (req, res, next) => {
 
 // Location
 
-router.post('/locations', (req, res, next) => {
-	var locationPromise =
+router.post('/locations/room/:roomId', (req, res, next) => {
+	Room.findById(req.params.roomId)
+	.then( (room) => {
 		Location.create({
-			name: req.body.name
-		})
-	var newRoles =
-		req.body.roleNames.map(function(roleName){
-			return {name: roleName}
-		})
-	var rolesPromise = Role.bulkCreate(newRoles, {returning: true});
-	Room.findById(req.body.roomId)
-	.then(function(room){
-		Promise.all([locationPromise, rolesPromise])
-		.then(function([location, roles]){
-			var roleIds = roles.map(function(roleObj){
-				return roleObj.dataValues.id
+				name: req.body.name,
+				roles: req.body.roles
 			})
-			return location.addRoles(roleIds);
+		.then( (location) => {
+			room.addLocation(location)
 		})
-		.then(function(location){
-			return room.addLocation(location);
-		})
-		.then(function(){
+		.then(() => {
 			res.sendStatus(201)
 		})
-		.catch(next)
+		.catch(next);
 	})
 	.catch(next);
 });
 
 router.get('/locations/room/:roomId', (req, res, next) => {
 	Room.findById(req.params.roomId)
-	.then(function(room){
+	.then((room) => {
 		return room.getLocations()
-	}).then(function(locations) {
+	}).then( (locations) => {
 		res.send(locations)
 	})
 	.catch(next);
@@ -108,81 +96,93 @@ router.get('/locations/room/:roomId', (req, res, next) => {
 //(unused)
 router.get('/rounds', (req, res, next) => {
 	Round.findAll()
-	.then(function(rounds){
+	.then( (rounds) => {
 		res.send(rounds)
 	})
 	.catch(next);
 });
 
-router.post('/rounds', (req, res, next) => {
-	Room.findById(req.body.roomId)
-	.then(function(room){
-		Round.create()
-		.then(function(round) {
-			room.setRound(round)
-			.then(function() {
-				return room.getLocations();
+router.post('/rounds/room/:roomId', (req, res, next) => {
+	Room.findById(req.params.roomId)
+	.then( (room) => {
+		const getPlayers = room.getPlayers();
+		const getLocations = room.getLocations();
+		Promise.all([getPlayers, getLocations])
+		.then( ([players, locations]) => {
+			const playerIds = [...players].map( (p) => p.id);
+			const locationIds = [...locations]
+				.filter( (l) => l.isActive)
+				.map( (l) => l.id);
+			Round.create({playerIds: playerIds, locationIds: locationIds})
+			.then( (round) => {
+				room.addRound(round);
 			})
-			.then(function(locations) {
-				var secretLocation = Utils.getRandomItem(locations);
-				var setLocation = round.setLocation(secretLocation);
-
-				var getRoles = secretLocation.getRoles();
-
-				var getPlayers = room.getPlayers();
-
-				Promise.all([setLocation, getRoles, getPlayers])
-				.then(function([ _, roles, players]){
-					var spyPlayer = Utils.getRandomItem(players);
-					var updatePlayerPromises = players.map(function(player){
-						return player.update({
-							isSpy: (player.id == spyPlayer.id)
-						});
-					})
-					Utils.shuffle(roles);
-					var nonSpyPlayers = players.filter(function(p){
-						return p.id != spyPlayer.id;
-					})
-					for(var i =0; i<nonSpyPlayers.length;i++){
-						var role = roles[i%roles.length];
-						updatePlayerPromises.push(role.addPlayer(nonSpyPlayers[i])); //TODO: clear spy player's role?
-					}
-					Promise.all(updatePlayerPromises)
-				})
-				.then(function(){
-					res.sendStatus(201)
-				})
-				.catch(next)
+			.then( () => {
+				res.sendStatus(201);
 			})
+			.catch(next);
 		})
+		.catch(next);
 	})
 	.catch(next);
 });
 
-//TODO: not done yet!!!
 router.get('/rounds/my-data/room/:roomId/player/:playerId', (req, res, next) => {
-	var getPlayer = Player.findById(req.params.playerId);
-	var getRoom = Room.findById(req.params.roomId);
-	//var getRound = Round.findOne() --TODO: get round start time!
-
-	Promise.all([getPlayer, getRoom])
-	.then(function([player, room]){
-
-		if(player.isSpy){
-			res.send({name: "Spy", location: null})
+	const { playerId, roomId } = req.params;
+	Room.findById(roomId)
+	.then( (room) => {
+		const getRounds = room.getRounds();
+		const getLocations = room.getLocations();
+		return Promise.all([getRounds, getLocations])
+	})
+	.then( ([rounds, locations]) => {
+		const currentRound = getMostRecentRound(rounds);
+		const validLocations =
+			locations.filter( (l) => {
+				return currentRound.locationIds.includes(l.id)
+			})
+		const roundData = compileRoundData(currentRound, validLocations);
+		if(roundData.spyId === playerId){
+			res.send({
+				role: "Spy",
+				location: null
+			})
 		}
-		var getRole = player.getRole(); //TODO: this is not a function
-		var getLocation = room.getLocation();
-		return Promise.all(getRole, getLocation)
+		else if(roundData.idToRole[playerId]){
+			res.send({
+				role: roundData.idToRole[playerId],
+				location: roundData.location
+			})
+		}
+		else{
+			res.send("GTFO of here")
+		}
 	})
-	.then(function([role, location]){
-		res.send({
-			role: role.name,
-			location: location.name
-		})
-	})
-	.catch(next);
 });
 
+function getMostRecentRound(rounds){
+	return ([...rounds].sort( (a, b) => {
+			return new Date(a.createdAt) < new Date(b.createdAt)? -1 : 1;
+		})
+		.pop());
+}
+
+function compileRoundData(round, locations){
+	const location =
+		shuffleSeed.shuffle(locations, round.id).pop();
+	const shuffledPlayerIds =
+		shuffleSeed.shuffle(round.playerIds, "secret"+round.id+"sauce");
+	const [spyId, ...nonSpyIds] = shuffledPlayerIds;
+	const idToRole = nonSpyIds.reduce( (acc, id, idx) => {
+		acc[id] = location.roles[idx % location.roles.length]
+		return acc;
+	}, {})
+	return {
+		location: location.name,
+		spyId: spyId,
+		idToRole: idToRole
+	}
+
+}
 
 module.exports = router;

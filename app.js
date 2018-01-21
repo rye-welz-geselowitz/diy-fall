@@ -17,7 +17,7 @@ app.use(express.static(path.join(__dirname, './css')));
 app.use('/', router);
 
 //Syncing & Listening
-models.db.sync({force: true})
+models.db.sync({force: false})
 .then(function () {
     app.listen(3000, function () {
         console.log('Server is listening on port 3000!');
